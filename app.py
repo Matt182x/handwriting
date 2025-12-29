@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 # Supabase credentials from environment variables
 SUPABASE_URL =  "https://yuywshrmnvemvgsxevow.supabase.co"
-SUPABASE_KEY = "sb_publishable_echas_lmMXFYh0WBZJpliQ_y2O-5ksj"
+SUPABASE_KEY = "sb_secret_IScbXVpTYMV4O2vNmvHyGA_0eYZYBlZ"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Ensure temporary folder
