@@ -24,28 +24,24 @@
         const letterDiv = document.getElementById('letter');
         const signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgba(255,255,255,1)' });
 
-        // Play the letter sound
         document.getElementById('playSoundBtn').addEventListener('click', () => {
             const utterance = new SpeechSynthesisUtterance(letters[index]);
             window.speechSynthesis.speak(utterance);
         });
 
-        // Go to next letter and save
         document.getElementById('nextBtn').addEventListener('click', () => {
             if (signaturePad.isEmpty()) {
                 alert("Please write the letter first.");
                 return;
             }
 
-            // Save image to backend
             const dataURL = signaturePad.toDataURL('image/png');
             fetch('/save_letter', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ letter: letters[index], image: dataURL })
+                body: JSON.stringify({ letter: letters[index], image: dataURL, child_id: 'child_001' })
             }).then(res => res.text()).then(console.log);
 
-            // Clear canvas and go to next letter
             signaturePad.clear();
             index++;
             if (index < letters.length) {
