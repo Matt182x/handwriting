@@ -1,50 +1,105 @@
-from flask import Flask, render_template, request, send_file
-from replit import db
-from PIL import Image, ImageDraw, ImageFont
-from io import BytesIO
+import os
 import base64
+from io import BytesIO
+from flask import Flask, render_template, request, send_file
+from PIL import Image, ImageDraw
+from supabase import create_client
+from dotenv import load_dotenv
+import requests
+
+
+# Load .env
+load_dotenv()
 
 app = Flask(__name__)
 
-# Capture letter
-@app.route('/')
-def home():
-    return render_template('alphabet.html')
+# Supabase client
+supabase = create_client(
+    os.environ["SUPABASE_URL"],
+    os.environ["SUPABASE_SERVICE_KEY"]
+)
 
-@app.route('/save_letter', methods=['POST'])
+LETTERS = "abcdefghijklmnopqrstuvwxyz"
+
+@app.route("/")
+def index():
+    return render_template("alphabet.html", letters=LETTERS)
+
+@app.route("/save_letter", methods=["POST"])
 def save_letter():
-    data = request.get_json()
-    letter = data['letter']
-    child_id = data.get('child_id', 'child_001')
-    img_data = data['image'].split(',')[1]
-    
-    # Store base64 string in Replit DB
-    db[f"{child_id}_{letter}"] = img_data
-    return f"Saved {letter} for {child_id}!"
+    import base64
 
-# Generate simple card
-@app.route('/generate_card/<child_id>')
-def generate_card(child_id):
-    letters = "abcdefghijklmnopqrstuvwxyz"
-    
-    # Create blank card
-    img = Image.new('RGB', (800, 400), color='white')
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
+    # --- Parse JSON ---
+    try:
+        data = request.get_json(force=True)
+        if not data or "letter" not in data or "image" not in data:
+            return {"status": "error", "message": "Missing letter or image"}
+        letter = data["letter"].lower()
+        image_data = data["image"].split(",")[1]
+        image_bytes = base64.b64decode(image_data)
+    except Exception as e:
+        print("JSON parse error:", e)
+        return {"status": "error", "message": str(e)}
 
-    y = 50
-    for letter in letters:
-        key = f"{child_id}_{letter}"
-        if key in db:
-            img_bytes = base64.b64decode(db[key])
-            letter_img = Image.open(BytesIO(img_bytes)).resize((50, 50))
-            img.paste(letter_img, (50 + 60*letters.index(letter), y))
+    # --- Upload to storage ---
+    path = f"{letter}.png"
+    try:
+        try:
+            supabase.storage.from_("handwriting").remove([path])
+        except Exception:
+            pass  # ignore if file not exists
+        supabase.storage.from_("handwriting").upload(
+            path,
+            image_bytes,
+            {"content-type": "image/png"}
+        )
+    except Exception as e:
+        print("Storage upload error:", e)
+        return {"status": "error", "message": str(e)}
 
-    draw.text((50, 300), "Thank you for the gift!", font=font, fill="black")
-    output = BytesIO()
-    img.save(output, format='PNG')
-    output.seek(0)
-    return send_file(output, mimetype='image/png', download_name=f"{child_id}_card.png")
+    # --- Get public URL (string) ---
+    try:
+        image_url = supabase.storage.from_("handwriting").get_public_url(path)
+        # image_url is already a string in your library version
+    except Exception as e:
+        print("Error getting public URL:", e)
+        return {"status": "error", "message": str(e)}
+
+    # --- Upsert table ---
+    try:
+        supabase.table("handwriting_letters").upsert({
+            "letter": letter,
+            "image_url": image_url
+        }).execute()
+    except Exception as e:
+        print("Table insert error:", e)
+        return {"status": "error", "message": str(e)}
+
+    print(f"Saved letter '{letter}' to Supabase: {image_url}")
+    return {"status": "saved"}
+
+
+# Generate card from all letters
+@app.route("/generate_card")
+def generate_card():
+    rows = supabase.table("handwriting_letters").select("*").order("letter").execute().data
+
+    if not rows:
+        return "No letters found."
+
+    canvas = Image.new("RGB", (1200, 600), "white")
+    x, y = 50, 200
+
+    for row in rows:
+        img = Image.open(BytesIO(requests.get(row["image_url"]).content))
+        img = img.resize((40, 80))
+        canvas.paste(img, (x, y))
+        x += 45
+
+    output = "thank_you_card.png"
+    canvas.save(output)
+
+    return send_file(output, mimetype="image/png")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+    app.run(debug=True)

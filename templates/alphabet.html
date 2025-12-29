@@ -1,56 +1,153 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Alphabet Capture</title>
-    <style>
-        canvas { border: 1px solid #000; touch-action: none; }
-        #letter { font-size: 3em; margin-bottom: 10px; }
-        button { margin: 5px; font-size: 1em; padding: 5px 10px; }
-    </style>
+  <title>Trace the Letter</title>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.0/dist/signature_pad.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif;
+      text-align: center;
+      background: #fef6e4;
+    }
+
+    h1 {
+      font-size: 120px;
+      color: #333;
+      margin: 10px;
+    }
+
+    .canvas-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    canvas {
+      border-radius: 20px;
+      border: 4px dashed #ccc;
+      touch-action: none;
+    }
+
+    #guideCanvas {
+      z-index: 0;
+      background: white;
+    }
+
+    #drawCanvas {
+      z-index: 1;
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: transparent;
+    }
+
+    button {
+      font-size: 24px;
+      padding: 12px 20px;
+      margin: 10px;
+      border-radius: 20px;
+      border: none;
+      background: #8bd3dd;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #6ecad6;
+    }
+
+    #done {
+      margin-top: 30px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Write the alphabet!</h1>
-    <div id="letter">a</div>
-    <canvas id="canvas" width="400" height="200"></canvas><br>
-    <button id="playSoundBtn">🔊 Play Sound</button>
-    <button id="nextBtn">Next Letter</button>
 
-    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.0/dist/signature_pad.umd.min.js"></script>
-    <script>
-        const letters = 'abcdefghijklmnopqrstuvwxyz';
-        let index = 0;
+<h1 id="letter">a</h1>
 
-        const canvas = document.getElementById('canvas');
-        const letterDiv = document.getElementById('letter');
-        const signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgba(255,255,255,1)' });
+<div class="canvas-container">
+  <canvas id="guideCanvas" width="500" height="300"></canvas>
+  <canvas id="drawCanvas" width="500" height="300"></canvas>
+</div>
+<br>
 
-        document.getElementById('playSoundBtn').addEventListener('click', () => {
-            const utterance = new SpeechSynthesisUtterance(letters[index]);
-            window.speechSynthesis.speak(utterance);
-        });
+<button id="sound">🔊 Hear</button>
+<button id="next">Next ➡️</button>
 
-        document.getElementById('nextBtn').addEventListener('click', () => {
-            if (signaturePad.isEmpty()) {
-                alert("Please write the letter first.");
-                return;
-            }
+<div id="done" style="display:none">
+  <h2>Great job! 🎉</h2>
+  <a href="/generate_card/child_001">
+    <button>Create My Card 💌</button>
+  </a>
+</div>
 
-            const dataURL = signaturePad.toDataURL('image/png');
-            fetch('/save_letter', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ letter: letters[index], image: dataURL, child_id: 'child_001' })
-            }).then(res => res.text()).then(console.log);
+<script>
+const letters = "abcdefghijklmnopqrstuvwxyz";
+let index = 0;
 
-            signaturePad.clear();
-            index++;
-            if (index < letters.length) {
-                letterDiv.innerText = letters[index];
-            } else {
-                letterDiv.innerText = "Done!";
-                alert("All letters captured!");
-            }
-        });
-    </script>
+// Canvases
+const guideCanvas = document.getElementById("guideCanvas");
+const guideCtx = guideCanvas.getContext("2d");
+const drawCanvas = document.getElementById("drawCanvas");
+
+// SignaturePad for strokes
+const pad = new SignaturePad(drawCanvas, {
+  minWidth: 6,
+  maxWidth: 10,
+  penColor: "#222"
+});
+
+// Draw faint guide letter
+function drawGuideLetter(letter) {
+  guideCtx.clearRect(0, 0, guideCanvas.width, guideCanvas.height);
+  guideCtx.font = "200px Comic Sans MS";
+  guideCtx.fillStyle = "#e0e0e0";
+  guideCtx.textAlign = "center";
+  guideCtx.textBaseline = "middle";
+  guideCtx.fillText(letter, guideCanvas.width / 2, guideCanvas.height / 2 + 40);
+}
+
+// Initial draw
+drawGuideLetter(letters[index]);
+
+// Sound button
+document.getElementById("sound").onclick = () => {
+  speechSynthesis.speak(new SpeechSynthesisUtterance(letters[index]));
+};
+
+// Next button
+document.getElementById("next").onclick = async () => {
+  if (pad.isEmpty()) {
+    alert("Try tracing the letter first 😊");
+    return;
+  }
+
+  // --- Save only strokes ---
+  const tracedOnly = drawCanvas.toDataURL(); // transparent background
+
+  await fetch("/save_letter", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      letter: letters[index],
+      image: tracedOnly
+    })
+  });
+
+  // Clear strokes
+  pad.clear();
+
+  index++;
+  if (index < letters.length) {
+    document.getElementById("letter").innerText = letters[index];
+    drawGuideLetter(letters[index]);
+  } else {
+    drawCanvas.style.display = "none";
+    guideCanvas.style.display = "none";
+    document.getElementById("next").style.display = "none";
+    document.getElementById("sound").style.display = "none";
+    document.getElementById("done").style.display = "block";
+  }
+};
+</script>
+
 </body>
 </html>
